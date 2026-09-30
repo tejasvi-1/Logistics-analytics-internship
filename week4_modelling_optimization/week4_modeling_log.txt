@@ -1,0 +1,176 @@
+======================================================================
+1. PROBLEM DEFINITION AND DATA
+======================================================================
+Loaded C:\Users\Dell\OneDrive\Desktop\logistics-analytics-internship\data\olist_clean.csv
+Orders: 95,097
+Target: lead_time_days (days from purchase to delivery)
+Target mean 11.99, median 10.0, std 8.45
+
+Model A features (known at checkout): distance_km, weight_g, price, n_items, same_state, purchase_month, purchase_dayofweek, customer_state, seller_state
+Model B features (A + known after seller ships): dispatch_delay_days
+Freight is left out of the lead-time models because it is an outcome of the same shipping decision.
+
+Train rows: 76,077   Test rows: 19,020 (80/20 split)
+
+Current delivery estimate (reference, test set):
+  MAE 12.69 days, bias +11.44 days (positive = promise longer than actual), on-time 92.09%, average promise 23.44 days
+
+======================================================================
+2. MODEL COMPARISON (Model A, checkout-time features)
+======================================================================
+Training Mean baseline ... (0.0 min elapsed)
+Training Linear Regression ... (0.0 min elapsed)
+Training Ridge Regression ... (0.1 min elapsed)
+Training Decision Tree ... (0.1 min elapsed)
+Training Random Forest ... (0.2 min elapsed)
+Training Gradient Boosting (default) ... (1.1 min elapsed)
+
+======================================================================
+3. HYPERPARAMETER TUNING (Gradient Boosting)
+======================================================================
+Running random search: 12 parameter sets x 3-fold CV (1.2 min elapsed)
+Best parameters: {'min_samples_leaf': 20, 'max_leaf_nodes': 63, 'max_iter': 400, 'max_depth': None, 'learning_rate': 0.1, 'l2_regularization': 10.0}
+Best CV MAE: 4.709
+Tuned model: train MAE 4.450 vs test MAE 4.696
+
+Results on the test set (Model A):
+                             CV_MAE    MAE   RMSE     R2  within_3_days_pct   bias
+model                                                                             
+Mean baseline                 6.219  6.259  8.512 -0.000             30.889 -0.018
+Linear Regression             5.156  5.188  7.304  0.264             38.328  0.033
+Ridge Regression              5.156  5.188  7.303  0.264             38.318  0.034
+Decision Tree                 4.849  4.863  6.923  0.338             42.818  0.036
+Random Forest                 4.783  4.791  6.834  0.355             44.427  0.134
+Gradient Boosting (default)   4.717  4.724  6.755  0.370             44.364  0.033
+Gradient Boosting (tuned)     4.709  4.696  6.733  0.374             44.879  0.038
+
+Best model by test MAE: Gradient Boosting (tuned)
+Improvement over mean baseline: 25.0% lower MAE
+Tuned model MAE 4.70 vs current delivery estimate MAE 12.69
+
+======================================================================
+4. MODEL B AND ROBUSTNESS CHECK
+======================================================================
+Model B (post-dispatch) test metrics:
+MAE                   4.028
+RMSE                  6.008
+R2                    0.502
+within_3_days_pct    54.211
+bias                  0.000
+Adding dispatch delay lowers MAE from 4.696 to 4.028
+
+Time-based split (train on earliest 80% of orders, test on latest 20%):
+  tuned model MAE 4.091, RMSE 5.319, R2 0.139; mean-baseline MAE 6.215
+
+======================================================================
+5. ERROR ANALYSIS (Model A, test set)
+======================================================================
+Orders with actual lead time above 20 days: 2,526 (13.3%)
+  MAE on those orders: 11.73, mean error -11.53 days (negative = underpredicted)
+MAE on the remaining orders: 3.62, mean error +1.81
+
+MAE by distance band:
+distance_km
+0-200        3.30
+200-500      4.64
+500-1000     5.03
+1000-1500    5.84
+1500+        6.85
+
+MAE for the 12 largest states:
+                orders   MAE
+customer_state              
+SP                7929  3.60
+RJ                2387  6.25
+MG                2215  4.30
+RS                1041  5.57
+PR                 999  4.27
+SC                 707  5.09
+BA                 678  6.54
+DF                 437  4.46
+ES                 389  5.48
+GO                 385  4.90
+
+Permutation importance (increase in MAE when a feature is shuffled):
+Model A:
+purchase_month        0.652
+distance_km           0.628
+same_state            0.523
+customer_state        0.221
+weight_g              0.130
+seller_state          0.103
+price                 0.060
+purchase_dayofweek    0.031
+n_items               0.015
+Model B:
+dispatch_delay_days    1.217
+distance_km            0.717
+purchase_month         0.571
+same_state             0.524
+customer_state         0.264
+seller_state           0.084
+weight_g               0.034
+purchase_dayofweek     0.031
+price                  0.015
+n_items                0.011
+
+======================================================================
+6. OPTIMIZATION 1: DELIVERY PROMISE CALIBRATION
+======================================================================
+Idea: promise = predicted lead time + a safety buffer. The buffer is chosen on out-of-fold training predictions, then checked on the test set.
+Current promise: on-time 92.09%, average promised 23.44 days
+Model promise matching current on-time rate (buffer +9.0 days): on-time 92.78%, average promised 21.54 days (+1.90 days shorter)
+Model promise for a 95% on-time target (buffer +12.0 days): on-time 95.08%, average promised 24.54 days (-1.10 days shorter than current)
+
+Buffer curve (test set), selected rows:
+ buffer  on_time  avg_promise
+    0.0    68.42        12.54
+    2.0    78.15        14.54
+    4.0    84.23        16.54
+    6.0    88.70        18.54
+    8.0    91.72        20.54
+   10.0    93.69        22.54
+[saved fig5_promise_optimization.png]
+
+======================================================================
+7. WHAT-IF SCENARIOS (model-based estimates, not guarantees)
+======================================================================
+
+7.1 Seller dispatch SLA (Model B)
+                   orders_affected  share_of_orders_pct  avg_days_saved_per_affected  network_avg_lead_reduction
+max_dispatch_days                                                                                               
+1                            44459               46.751                        3.228                       1.509
+2                            30318               31.881                        3.492                       1.113
+3                            20225               21.268                        4.054                       0.862
+
+7.2 Regional fulfilment placement (serve cross-state orders from same-state stock)
+Freight model on test set: R2 0.773, MAE 3.89
+Cross-state orders: 60,912 (64.1%)
+If ALL were served from same-state stock: average predicted saving 7.02 days and 10.10 freight per order
+
+Top 10 states to place regional stock (ranked by total days saved):
+       cross_state_orders  total_days_saved  avg_days_saved  total_freight_saved  avg_freight_saved  cum_share_pct
+state                                                                                                             
+RJ                  11271          96024.28            8.52            112929.38              10.02          22.46
+RS                   4977          43071.36            8.65             46135.32               9.27          32.53
+BA                   3144          34285.35           10.91             38695.93              12.31          40.55
+SP                   9615          33844.19            3.52             87647.15               9.12          48.47
+MG                   9701          27860.89            2.87             46894.76               4.83          54.98
+SC                   3243          23877.65            7.36             25480.92               7.86          60.57
+PE                   1550          17580.27           11.34             30650.27              19.77          64.68
+GO                   1891          17519.50            9.26             19266.01              10.19          68.78
+ES                   1961          16730.60            8.53             17923.05               9.14          72.69
+DF                   1993          16054.43            8.06             21695.04              10.89          76.45
+Top 3 states: 40.6% of total predicted days saved, 19,392 orders, network-wide average lead time reduction 1.82 days
+Top 5 states: 55.0% of total predicted days saved, 38,708 orders, network-wide average lead time reduction 2.47 days
+Top 10 states: 76.4% of total predicted days saved, 49,346 orders, network-wide average lead time reduction 3.44 days
+[saved fig6_what_if_scenarios.png]
+[saved fig1_model_comparison.png]
+[saved fig2_actual_vs_predicted.png]
+[saved fig3_feature_importance.png]
+[saved fig4_error_by_segment.png]
+
+======================================================================
+9. SUMMARY
+======================================================================
+Total run time: 2.4 minutes
