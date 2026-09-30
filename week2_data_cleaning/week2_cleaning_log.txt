@@ -1,0 +1,129 @@
+Using data folder: C:\Users\Dell\OneDrive\Desktop\logistics-analytics-internship\data
+
+======================================================================
+1. DATA COLLECTION
+======================================================================
+orders       rows=   99,441  columns=8
+order_items  rows=  112,650  columns=7
+customers    rows=   99,441  columns=5
+sellers      rows=    3,095  columns=4
+products     rows=   32,951  columns=9
+geolocation  rows=1,000,163  columns=5
+
+Order date range: 2016-09-04 to 2018-10-17
+
+Order status counts:
+order_status
+delivered      96478
+shipped         1107
+canceled         625
+unavailable      609
+invoiced         314
+processing       301
+created            5
+approved           2
+
+Merged order-level table: 98,666 rows x 25 columns
+
+======================================================================
+2. DATA QUALITY AUDIT (before cleaning)
+======================================================================
+
+2.1 Duplicates
+Duplicate order_id rows: 0
+
+2.2 Missing values (columns with at least one missing value)
+                               missing   pct
+order_delivered_customer_date     2190  2.22
+lead_time_days                    2190  2.22
+category                          1389  1.41
+dispatch_delay_days               1023  1.04
+order_delivered_carrier_date      1009  1.02
+distance_km                        491  0.50
+cust_geolocation_lat               274  0.28
+cust_geolocation_lng               274  0.28
+sell_geolocation_lat               218  0.22
+sell_geolocation_lng               218  0.22
+weight_g                            16  0.02
+order_approved_at                   14  0.01
+
+2.3 Logical consistency checks (delivered orders only)
+Dispatch delay < 0 (carrier pickup before approval): 1350
+Lead time < 0 (delivered before purchase): 0
+Carrier pickup after customer delivery: 23
+Price <= 0: 0
+Lead time > 100 days: 63
+
+2.4 Outlier check with the IQR rule (delivered orders)
+                     median        max  lower_fence  upper_fence  n_outliers  pct_outliers   skew
+column                                                                                           
+lead_time_days        10.00     209.00        -7.50        28.50        5022          5.21   3.83
+freight               17.17    1794.96        -1.40        39.28        9694         10.05  12.28
+price                 86.50   13440.00      -110.10       305.90        7658          7.94   9.89
+dispatch_delay_days    1.00     125.00        -4.50         7.50        5003          5.19   3.60
+distance_km          433.87    8677.91      -732.99      1717.47        7418          7.73   1.69
+weight_g             750.00  184400.00     -2325.00      4675.00       13544         14.04   6.57
+
+======================================================================
+3. CLEANING PIPELINE
+======================================================================
+
+Row counts after each step:
+  Start: merged order-level table                    98,666
+  Remove duplicate orders                            98,666  (+0)
+  Keep delivered orders with a delivery date         96,470  (-2,196)
+  Remove logically impossible timestamps             95,097  (-1,373)
+
+3.1 Missing value imputation (flag columns record what was filled)
+dispatch_delay_days: 15 filled with overall median
+weight_g: 16 filled with category median (fallback: overall)
+distance_km: 471 filled with state-pair median (fallback: overall)
+Remaining missing in modeling columns: 0
+
+3.2 Outlier handling: cap values at the 1st and 99th percentile
+lead_time_days         capped   886 rows to [1.00, 46.00]
+freight                capped 1,296 rows to [7.39, 104.26]
+price                  capped 1,895 rows to [11.99, 996.07]
+dispatch_delay_days    capped   821 rows to [0.00, 17.00]
+distance_km            capped 1,901 rows to [5.80, 2483.36]
+weight_g               capped 1,875 rows to [99.96, 22350.00]
+
+3.3 Feature engineering
+Added: is_late, purchase_month, purchase_dayofweek, freight_to_price, same_state
+
+3.4 Transformation and normalization
+Skewness of freight: 2.74 -> 0.89 after log1p
+Min-max (0 to 1) and z-score versions created for: distance_km, freight, price, weight_g, dispatch_delay_days, n_items
+
+Check of scaled columns (min, max, mean, std):
+                     minmax_min  minmax_max  z_mean  z_std
+distance_km                 0.0         1.0    -0.0    1.0
+freight                     0.0         1.0     0.0    1.0
+price                       0.0         1.0    -0.0    1.0
+weight_g                    0.0         1.0     0.0    1.0
+dispatch_delay_days         0.0         1.0     0.0    1.0
+n_items                     0.0         1.0    -0.0    1.0
+
+======================================================================
+4. BEFORE VS AFTER
+======================================================================
+                      before                                      after                                  
+                        mean      std   min     50%        max     mean      std    min     50%       max
+lead_time_days         12.15     9.58  0.00   10.00     209.00    11.99     8.45   1.00   10.00     46.00
+freight                22.77    21.58  0.00   17.16    1794.96    22.23    16.21   7.39   17.16    104.26
+price                 137.18   209.50  0.85   86.58   13440.00   131.34   155.13  11.99   86.58    996.07
+dispatch_delay_days     2.35     3.49  0.00    1.00     125.00     2.28     2.96   0.00    1.00     17.00
+distance_km           601.64   593.27  0.00  435.28    8677.91   599.01   583.28   5.80  435.28   2483.36
+weight_g             2392.86  4784.80  0.00  750.00  184400.00  2287.03  3910.09  99.96  750.00  22350.00
+
+Final clean dataset: 95,097 rows x 52 columns
+Rows retained from start: 96.4%
+
+KPIs on the cleaned data:
+  On-time delivery rate: 91.81%
+  Average lead time:     11.99 days
+  Average freight:       22.23
+  Average dispatch delay:2.28 days
+
+Saved cleaned data to C:\Users\Dell\OneDrive\Desktop\logistics-analytics-internship\data\olist_clean.csv
+Saved charts and before_after_summary.csv next to this script.
