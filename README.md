@@ -23,8 +23,8 @@ Files used: orders, order items, customers, sellers and geolocation.
 | Week | Topic | Status |
 |------|-------|--------|
 | 1 | Strategic planning and data exploration | Done |
-| 2 | Data collection, cleaning and preprocessing | In progress |
-| 3 | Advanced analysis and visualization | Upcoming |
+| 2 | Data collection, cleaning and preprocessing | Done |
+| 3 | Advanced analysis and visualization | In progress |
 | 4 | Predictive modeling and optimization | Upcoming |
 
 ## Week 1 results (preliminary)
@@ -34,3 +34,17 @@ Files used: orders, order items, customers, sellers and geolocation.
 - Cost per shipment: 22.79 BRL
 - Random forest delivery time model: test MAE 4.57 days (linear regression baseline: 4.86)
 - Sellers grouped into three performance clusters with K-Means
+
+## Week 2 results (data cleaning)
+
+Script: `week2_data_cleaning/week_two.py`
+
+- Merged 6 Olist tables into one order-level table (98,666 orders)
+- Kept delivered orders only and removed 1,373 orders with impossible timestamps (for example carrier pickup before order approval)
+- Filled small gaps with medians (weight, dispatch delay, distance) and added flag columns marking filled values
+- Capped outliers at the 1st and 99th percentile (for example maximum freight went from 1,794.96 to 104.26)
+- Applied a log transform to freight (skewness 2.74 to 0.89) and created min-max and z-score scaled features
+- Final clean dataset: 95,097 orders (98.6% of delivered orders)
+- KPIs stayed stable after cleaning (on-time delivery 91.89% to 91.81%)
+
+The pipeline saves a cleaned dataset (`olist_clean.csv`) into the `data` folder, which is not included in this repository.
