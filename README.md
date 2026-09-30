@@ -15,8 +15,9 @@ This project uses the **Brazilian E-Commerce Public Dataset by Olist** (about 10
 2. Create a folder named `data` in the project root and place the CSV files in it.
 3. Install the libraries: `pip install -r requirements.txt`
 4. Run: `python week1_strategic_planning/week_one.py`
+5. For Week 2: `python week2_data_cleaning/week_two.py`
 
-Files used: orders, order items, customers, sellers and geolocation.
+Files used: orders, order items, customers, sellers, products and geolocation.
 
 ## Project progress
 
